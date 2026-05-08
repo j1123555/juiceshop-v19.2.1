@@ -6,17 +6,20 @@ on:
   pull_request:
     branches: ["main"]
 
+# Securityタブに結果を書き込むための権限設定
 permissions:
   contents: read
-  security-events: write # Securityタブへの書き込み権限が必要
+  security-events: write
+  actions: read # 実行情報の取得に必要
 
 jobs:
-  snyk:
+  snyk-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 言語のセットアップ（例: Node.js。プロジェクトに合わせて変更してください）
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,17 +28,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Snykスキャンを実行し、結果をSARIF形式で保存する
+      # Snykでスキャンを実行し、結果をSARIF形式で出力
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
-        continue-on-error: true # 脆弱性があってもアップロード工程に進むために必須
+        continue-on-error: true # 脆弱性があっても次のアップロード工程に進むために必要
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --sarif-file-output=snyk.sarif
 
-      # 生成されたSARIFファイルをGitHub Code Scanningにアップロード
+      # 結果をGitHub Code Scanning（Securityタブ）にアップロード
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4 # 最新のv4を使用
         with:
           sarif_file: snyk.sarif
