@@ -58,18 +58,35 @@ jobs:
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
-        # 【追加】SARIFファイルを指定ディレクトリに出力させる
+        # SARIFファイルを指定ディレクトリに出力させる
         output: codeql-results 
 
-    # 【追加】出力されたSARIFファイルをCSVに変換
-    # ※マトリックス実行に対応するため、言語名（matrix.language）を変数としてファイル名に組み込んでいます
-    - name: Convert CodeQL SARIF to CSV
-      uses: austenstone/sarif-to-csv@main
-      with:
-        sarif-file: codeql-results/${{ matrix.language }}.sarif
-        csv-file: codeql-${{ matrix.language }}-report.csv
+    # 【変更】外部アクションへの依存をやめ、jqコマンドで自力でCSV変換を行う
+    - name: Convert CodeQL SARIF to CSV using jq
+      shell: bash
+      run: |
+        CSV_FILE="codeql-${{ matrix.language }}-report.csv"
+        SARIF_FILE="codeql-results/${{ matrix.language }}.sarif"
+        
+        # 1. CSVのヘッダー行を作成
+        echo "RuleID,Level,Message,File,Line" > "$CSV_FILE"
+        
+        # 2. SARIFファイルが存在するか確認し、jqで解析してCSVに追記する
+        if [ -f "$SARIF_FILE" ]; then
+          jq -r '
+            .runs[]?.results[]? | [
+              .ruleId,
+              (.level // "warning"),
+              (.message.text // "" | gsub("\n"; " ")),
+              (.locations[0].physicalLocation.artifactLocation.uri // ""),
+              (.locations[0].physicalLocation.region.startLine // "")
+            ] | @csv
+          ' "$SARIF_FILE" >> "$CSV_FILE"
+        else
+          echo "Warning: SARIF file not found at $SARIF_FILE"
+        fi
 
-    # 【追加】生成されたCSVをアーティファクトとして保存
+    # 生成されたCSVをアーティファクトとして保存
     - name: Upload CSV report as artifact
       uses: actions/upload-artifact@v4
       with:
